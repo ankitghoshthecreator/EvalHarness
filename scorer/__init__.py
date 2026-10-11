@@ -5,6 +5,7 @@ from .agreement_metrics import (
     cohens_kappa, evaluate_agreement, continuous_score_agreement,
     krippendorffs_alpha_nominal, AgreementReport,
 )
+from .ensemble_judge import EnsembleJudge, EnsembleDecision, ConsensusStrategy
 
 __all__ = [
     "LocalScore", "score", "batch_score",
@@ -12,4 +13,5 @@ __all__ = [
     "RAGASResult", "evaluate_rag",
     "cohens_kappa", "evaluate_agreement", "continuous_score_agreement",
     "krippendorffs_alpha_nominal", "AgreementReport",
+    "EnsembleJudge", "EnsembleDecision", "ConsensusStrategy",
 ]
