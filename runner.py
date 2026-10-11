@@ -33,7 +33,9 @@ from reporter.report_generator import (
     render_markdown, render_regression_markdown, save_report,
 )
 from reporter.mrm_generator import MRMReport, save_mrm_report
+from reporter.cost_tracker import CostTracker
 from scorer.judge_agent import JudgeAgent
+from scorer.ensemble_judge import EnsembleJudge, ConsensusStrategy
 from scorer.local_scorer import score as local_score
 
 load_dotenv()
@@ -174,6 +176,9 @@ def run_harness(
     output_dir: str = "eval_history",
     generate_mrm: bool = False,
     institution: str = "Tier-1 Investment Bank",
+    use_ensemble: bool = False,
+    ensemble_strategy: str = "AVERAGE",
+    show_cost_report: bool = True,
 ) -> EvalRunReport:
     probes = load_probes(probe_bank_path)
     logger.info("Loaded %d probes from %s", len(probes), probe_bank_path)
@@ -198,7 +203,11 @@ def run_harness(
             )
             return resp.choices[0].message.content or ""
 
-        judge = JudgeAgent(model=os.environ.get("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b"))
+        if use_ensemble:
+            logger.info("Using Multi-Judge Ensemble with consensus strategy: %s", ensemble_strategy)
+            judge = EnsembleJudge.build_default()
+        else:
+            judge = JudgeAgent(model=os.environ.get("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b"))
 
     # Evaluate all probes
     results: list[ProbeResult] = []
@@ -234,6 +243,12 @@ def run_harness(
 
     # Print markdown to console
     print("\n" + render_markdown(report))
+
+    # Token Economics & Cost Report
+    if show_cost_report:
+        tracker = CostTracker(judge_model=os.environ.get("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b"))
+        cost_summary = tracker.calculate_savings(results)
+        print("\n" + cost_summary.summary())
 
     # Regression diff (if baseline provided)
     if baseline_path and Path(baseline_path).exists():
@@ -288,6 +303,22 @@ def main():
         default="Tier-1 Investment Bank",
         help="Financial institution name for MRM audit report",
     )
+    parser.add_argument(
+        "--ensemble",
+        action="store_true",
+        help="Use multi-judge ensemble (120B + 20B consensus)",
+    )
+    parser.add_argument(
+        "--strategy",
+        default="AVERAGE",
+        choices=["AVERAGE", "STRICT_MINIMUM", "MAJORITY_VOTE", "WEIGHTED"],
+        help="Consensus strategy for multi-judge ensemble",
+    )
+    parser.add_argument(
+        "--no-cost-report",
+        action="store_true",
+        help="Suppress token economics and cost savings report",
+    )
     args = parser.parse_args()
 
     run_harness(
@@ -297,6 +328,9 @@ def main():
         output_dir=args.output_dir,
         generate_mrm=args.mrm,
         institution=args.institution,
+        use_ensemble=args.ensemble,
+        ensemble_strategy=args.strategy,
+        show_cost_report=not args.no_cost_report,
     )
 
 
