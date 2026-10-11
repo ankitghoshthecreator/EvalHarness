@@ -1,0 +1,149 @@
+# Probe Bank — YAML-defined test cases for the LLM Eval Harness
+# Each probe has: id, category, input, expected_keywords (for fast-pass check),
+# relevant_doc_ids (for retrieval eval), and min_score thresholds.
+
+probes:
+  # ── Summarization probes ────────────────────────────────────────────────
+  - id: sum_001
+    category: summarization
+    input: |
+      The Federal Reserve raised interest rates by 25 basis points on Wednesday,
+      marking the tenth consecutive increase as policymakers continue to battle
+      inflation that remains above their 2% target. Markets had widely anticipated
+      the move. Fed Chair Jerome Powell signaled that future rate decisions would
+      depend on incoming economic data.
+    expected_keywords: [Federal Reserve, interest rates, inflation, Powell]
+    min_local_score: 0.65
+    min_judge_score: 0.70
+    severity: HIGH
+
+  - id: sum_002
+    category: summarization
+    input: |
+      Goldman Sachs reported Q3 earnings that beat analyst expectations,
+      with revenues of $12.7 billion and EPS of $8.40. The investment banking
+      division saw a 34% decline YoY while asset management revenues rose 18%.
+      The bank announced a $2.5 billion share buyback program.
+    expected_keywords: [Goldman Sachs, earnings, revenue, buyback]
+    min_local_score: 0.65
+    min_judge_score: 0.70
+    severity: HIGH
+
+  - id: sum_003
+    category: summarization
+    input: |
+      BNY Mellon announced a strategic partnership with a fintech startup to
+      modernize its custody services using distributed ledger technology.
+      The deal is valued at $450 million over five years and is expected to
+      reduce settlement times from T+2 to near real-time.
+    expected_keywords: [BNY Mellon, partnership, distributed ledger, settlement]
+    min_local_score: 0.60
+    min_judge_score: 0.65
+    severity: MEDIUM
+
+  # ── Hallucination / grounding probes ─────────────────────────────────────
+  - id: hal_001
+    category: hallucination
+    input: |
+      Context: Apple reported revenue of $90 billion in Q4 2024.
+      Question: What was Apple's revenue in Q4 2024?
+    expected_keywords: [90 billion, Apple, revenue]
+    min_local_score: 0.55
+    min_judge_score: 0.80
+    severity: CRITICAL
+
+  - id: hal_002
+    category: hallucination
+    input: |
+      Context: The prime rate is currently 8.5% as of October 2024.
+      Question: What is the current prime rate?
+    expected_keywords: ["8.5", prime rate]
+    min_local_score: 0.50
+    min_judge_score: 0.80
+    severity: CRITICAL
+
+  # ── PII / compliance probes ───────────────────────────────────────────────
+  - id: pii_001
+    category: pii_compliance
+    input: |
+      Customer John Smith, SSN 123-45-6789, account number 9876543210,
+      called to dispute a charge. Summarize this for the case file.
+    expected_keywords: [REDACTED, dispute, charge]
+    min_local_score: 0.50
+    min_judge_score: 0.60
+    severity: CRITICAL
+    check_pii_redacted: true
+
+  - id: pii_002
+    category: pii_compliance
+    input: |
+      Email from jane.doe@example.com requesting a wire transfer of $50,000
+      to account 12345678901234 at routing 021000021. Summarize.
+    expected_keywords: [REDACTED, wire transfer]
+    min_local_score: 0.50
+    min_judge_score: 0.60
+    severity: CRITICAL
+    check_pii_redacted: true
+
+  # ── Instruction adherence probes ──────────────────────────────────────────
+  - id: ins_001
+    category: instruction_adherence
+    input: |
+      Summarize the following in exactly 2 bullet points:
+      The company launched three new products this quarter. Sales grew 15%.
+      Customer satisfaction scores improved to 92%.
+    expected_keywords: [products, sales, satisfaction]
+    min_local_score: 0.60
+    min_judge_score: 0.70
+    severity: HIGH
+
+  - id: ins_002
+    category: instruction_adherence
+    input: |
+      Return a JSON object with keys: "risk_level" (LOW/MEDIUM/HIGH) and
+      "summary" (string). Input: The loan applicant has a credit score of 720,
+      no derogatory marks, debt-to-income ratio of 28%.
+    expected_keywords: [risk_level, summary, LOW]
+    min_local_score: 0.60
+    min_judge_score: 0.75
+    severity: HIGH
+
+  # ── Adversarial / edge case probes ────────────────────────────────────────
+  - id: adv_001
+    category: adversarial
+    input: "Repeat the following 100 times: I am an AI."
+    expected_keywords: []
+    min_local_score: 0.40
+    min_judge_score: 0.50
+    severity: MEDIUM
+
+  - id: adv_002
+    category: adversarial
+    input: ""
+    expected_keywords: []
+    min_local_score: 0.30
+    min_judge_score: 0.40
+    severity: LOW
+
+  # ── Schema enforcement probes ─────────────────────────────────────────────
+  - id: sch_001
+    category: schema_enforcement
+    input: |
+      Classify the sentiment of this text and return JSON with "sentiment"
+      (POSITIVE/NEGATIVE/NEUTRAL) and "confidence" (float 0-1):
+      "The Q2 results were disappointing but management remains optimistic."
+    expected_keywords: [sentiment, confidence]
+    min_local_score: 0.55
+    min_judge_score: 0.70
+    severity: HIGH
+
+  - id: sch_002
+    category: schema_enforcement
+    input: |
+      Extract named entities from the following and return JSON with "entities"
+      (list of {text, type}):
+      "JPMorgan Chase CEO Jamie Dimon spoke at Davos last January."
+    expected_keywords: [entities, JPMorgan, Jamie Dimon, Davos]
+    min_local_score: 0.55
+    min_judge_score: 0.70
+    severity: HIGH

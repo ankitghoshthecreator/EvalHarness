@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=scorer --cov=guardrails --cov=reporter --cov-report=term-missing"
+pythonpath = ["."]

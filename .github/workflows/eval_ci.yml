@@ -1,0 +1,61 @@
+name: LLM Eval Harness CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  eval-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create and activate venv
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+
+      - name: Install dependencies
+        run: |
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        run: |
+          source venv/bin/activate
+          pytest tests/ -v --tb=short --cov=scorer --cov=guardrails --cov=reporter \
+            --cov-report=term-missing --cov-fail-under=80
+
+      - name: Run eval harness (mock LLM, no API key)
+        run: |
+          source venv/bin/activate
+          python runner.py --probe-bank probes/probe_bank.yaml --model mock \
+            --output-dir eval_history
+
+      - name: Check for regressions (if baseline exists)
+        run: |
+          source venv/bin/activate
+          BASELINE=$(ls eval_history/*.json 2>/dev/null | head -1)
+          if [ -n "$BASELINE" ]; then
+            echo "Running regression check against $BASELINE"
+            python runner.py --probe-bank probes/probe_bank.yaml --model mock \
+              --baseline "$BASELINE" --output-dir eval_history
+          else
+            echo "No baseline found — skipping regression check"
+          fi
+        continue-on-error: false
+
+      - name: Upload eval reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-reports
+          path: eval_history/
