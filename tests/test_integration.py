@@ -489,3 +489,85 @@ class TestJudgeAgent:
             assert res.factual_grounding == 0.9
             assert res.hallucination_risk == "NONE"
             assert res.escalation_failed is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Model Risk Management (SR 11-7) Generator Tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+from reporter.mrm_generator import (
+    MRMRiskMetrics, MRMReport, render_mrm_html, save_mrm_report
+)
+
+
+class TestMRMGenerator:
+    def test_metrics_calculation_clean(self):
+        results = [
+            _make_result("p1", 0.95, passed=True),
+            _make_result("p2", 0.90, passed=True),
+        ]
+        metrics = MRMRiskMetrics.calculate(results)
+        assert metrics.total_probes == 2
+        assert metrics.passed_probes == 2
+        assert metrics.pass_rate == 1.0
+        assert "LOW RISK" in metrics.overall_risk_rating
+
+    def test_metrics_calculation_critical_failure(self):
+        r_fail = ProbeResult(
+            probe_id="p_crit",
+            category="regulatory_compliance",
+            local_score=0.2,
+            judge_score=None,
+            composite=0.2,
+            passed=False,
+            severity="CRITICAL",
+        )
+        metrics = MRMRiskMetrics.calculate([r_fail])
+        assert "HIGH RISK" in metrics.overall_risk_rating
+        assert metrics.regulatory_breach_rate == 1.0
+
+    def test_mrm_report_from_eval_report(self):
+        results = [
+            _make_result("sum_001", 0.9, passed=True),
+            _make_result("hal_001", 0.85, passed=True),
+        ]
+        eval_rep = EvalRunReport.build(results, model="mock_model")
+        mrm = MRMReport.from_eval_report(eval_rep, institution="Goldman Sachs")
+        assert mrm.institution == "Goldman Sachs"
+        assert mrm.model_id == "mock_model"
+        assert len(mrm.results) == 2
+        assert "test" in mrm.category_breakdown
+
+    def test_render_mrm_html(self):
+        results = [
+            ProbeResult(
+                probe_id="hal_001",
+                category="hallucination",
+                local_score=0.9,
+                judge_score=0.95,
+                composite=0.95,
+                passed=True,
+                input_text="Sample input context",
+                output_text="Sample model response",
+            )
+        ]
+        eval_rep = EvalRunReport.build(results)
+        mrm = MRMReport.from_eval_report(eval_rep, institution="BNY Mellon")
+        html = render_mrm_html(mrm)
+
+        assert "<!DOCTYPE html>" in html
+        assert "Model Risk Management (MRM) Compliance Audit" in html
+        assert "BNY Mellon" in html
+        assert "hal_001" in html
+        assert "Federal Reserve SR 11-7" in html
+
+    def test_save_mrm_report(self, tmp_path):
+        results = [_make_result("p1", 0.85)]
+        eval_rep = EvalRunReport.build(results)
+        mrm = MRMReport.from_eval_report(eval_rep)
+        paths = save_mrm_report(mrm, output_dir=tmp_path)
+
+        assert paths["html"].exists()
+        assert paths["json"].exists()
+        assert paths["html"].stat().st_size > 500
+        assert paths["json"].stat().st_size > 100

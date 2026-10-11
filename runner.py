@@ -32,6 +32,7 @@ from reporter.report_generator import (
     EvalRunReport, ProbeResult, regression_diff,
     render_markdown, render_regression_markdown, save_report,
 )
+from reporter.mrm_generator import MRMReport, save_mrm_report
 from scorer.judge_agent import JudgeAgent
 from scorer.local_scorer import score as local_score
 
@@ -157,6 +158,8 @@ def evaluate_probe(
         pii_detected=pii_result.has_pii,
         severity=severity_str,
         latency_ms=round(latency_ms, 2),
+        input_text=probe.get("input", "").strip(),
+        output_text=output.strip(),
     )
 
 
@@ -169,6 +172,8 @@ def run_harness(
     model: str = "mock",
     baseline_path: str | None = None,
     output_dir: str = "eval_history",
+    generate_mrm: bool = False,
+    institution: str = "Tier-1 Investment Bank",
 ) -> EvalRunReport:
     probes = load_probes(probe_bank_path)
     logger.info("Loaded %d probes from %s", len(probes), probe_bank_path)
@@ -221,6 +226,12 @@ def run_harness(
     paths = save_report(report, output_dir)
     logger.info("Report saved → %s", paths["json"])
 
+    # Optional Federal Reserve SR 11-7 MRM Report
+    if generate_mrm:
+        mrm = MRMReport.from_eval_report(report, institution=institution)
+        mrm_paths = save_mrm_report(mrm, output_dir=output_dir)
+        logger.info("Federal Reserve SR 11-7 MRM Audit Pack saved → %s", mrm_paths["html"])
+
     # Print markdown to console
     print("\n" + render_markdown(report))
 
@@ -267,6 +278,16 @@ def main():
         default="eval_history",
         help="Directory to save eval reports",
     )
+    parser.add_argument(
+        "--mrm",
+        action="store_true",
+        help="Generate Federal Reserve SR 11-7 Model Risk Management (MRM) compliance audit pack",
+    )
+    parser.add_argument(
+        "--institution",
+        default="Tier-1 Investment Bank",
+        help="Financial institution name for MRM audit report",
+    )
     args = parser.parse_args()
 
     run_harness(
@@ -274,6 +295,8 @@ def main():
         model=args.model,
         baseline_path=args.baseline,
         output_dir=args.output_dir,
+        generate_mrm=args.mrm,
+        institution=args.institution,
     )
 
 
