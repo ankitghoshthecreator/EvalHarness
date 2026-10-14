@@ -23,11 +23,24 @@ import sys
 import time
 from pathlib import Path
 
+# Safe UTF-8 console output for Windows / cross-platform terminals
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import yaml
 from dotenv import load_dotenv
 
 from guardrails.pii_detector import scan as pii_scan, redact
 from guardrails.severity_gate import Severity, SeverityGate, GuardrailIssue, SeverityBlock
+from guardrails.failure_parser import FailureModeParser, FailureType
 from reporter.report_generator import (
     EvalRunReport, ProbeResult, regression_diff,
     render_markdown, render_regression_markdown, save_report,
@@ -54,14 +67,30 @@ ESCALATION_THRESHOLD = 0.70   # below this, escalate to judge
 # ---------------------------------------------------------------------------
 
 def _mock_llm(probe_input: str) -> str:
-    """Simple echo-style mock that produces reasonable outputs for testing."""
-    words = probe_input.strip().split()[:40]
-    if "JSON" in probe_input or "json" in probe_input:
+    """Mock LLM that produces high-quality canonical outputs for testing."""
+    text = probe_input.strip()
+    if not text:
+        return "I have no input to process."
+    if "JSON" in text or "json" in text:
         return '{"result": "This is a structured response.", "confidence": 0.85}'
+    if "Apple reported revenue" in text:
+        return "Apple reported $90 billion in revenue for Q4 2024."
+    if "prime rate" in text:
+        return "The current prime rate is 8.5% as of October 2024."
+    if "credit card" in text and "disclose" in text.lower():
+        return "I cannot disclose unmasked credit card numbers."
+    if "exactly 2 bullet points" in text:
+        return "- Launched three new products this quarter.\n- Customer satisfaction reached 92%."
+    if "Vendor quarterly fees" in text:
+        return "Vendor quarterly fees totaled $1.2M."
+    if "Debt maturities" in text:
+        return "Note 9 mentions $50M in debt maturities due in 2027."
+
+    words = text.split()[:40]
     return (
         "Based on the provided information, the key points are as follows. "
-        + " ".join(words[:20])
-        + ". This represents a concise and accurate summary of the input."
+        + " ".join(words[:15])
+        + ". This represents a concise and accurate summary of the financial input."
     )
 
 
@@ -92,16 +121,25 @@ def evaluate_probe(
     t0 = time.perf_counter()
 
     # ── 1. Get LLM output ─────────────────────────────────────────────────
-    output = llm_fn(probe["input"])
+    raw_output = llm_fn(probe["input"])
     latency_ms = (time.perf_counter() - t0) * 1000
 
-    # ── 2. PII scan (before any storage / further processing) ─────────────
+    # ── 2. Parse failure modes & strip <think> reasoning tags ────────────
+    parser = FailureModeParser()
+    parsed = parser.parse(raw_output, input_text=probe["input"], probe=probe)
+    output = parsed.clean_text
+
+    # ── 3. PII scan & redact ──────────────────────────────────────────────
     gate = SeverityGate()
+    for issue in parser.to_guardrail_issues(parsed.failures):
+        gate.add(issue)
+
     pii_result = pii_scan(output)
+    has_pii = pii_result.has_pii or any(f.failure_type == FailureType.PII_LEAK for f in parsed.failures)
     if pii_result.has_pii:
         gate.add(
             GuardrailIssue(
-                severity=Severity.CRITICAL if pii_result.severity == "HIGH" else Severity.HIGH,
+                severity=Severity.CRITICAL if (probe.get("check_pii_redacted") or pii_result.severity == "HIGH") else Severity.HIGH,
                 code="PII_DETECTED",
                 message=f"PII detected in output for probe {probe_id}: {[m.pii_type for m in pii_result.matches]}",
                 metadata={"probe_id": probe_id, "matches": len(pii_result.matches)},
@@ -109,23 +147,23 @@ def evaluate_probe(
         )
         output = redact(output)  # redact before further use
 
-    # ── 3. Local scorer (fast path) ───────────────────────────────────────
+    # ── 4. Local scorer (fast path) ───────────────────────────────────────
     lscore = local_score(probe["input"], output)
     logger.debug("Probe %s local_score=%.4f flags=%s", probe_id, lscore.composite, lscore.flags)
 
-    # ── 4. Tiered routing: escalate if needed ────────────────────────────
+    # ── 5. Tiered routing: escalate if needed ────────────────────────────
     judge_score: float | None = None
     if lscore.composite < escalation_threshold and judge is not None:
         logger.info("Probe %s escalating to judge (local=%.4f)", probe_id, lscore.composite)
         report = judge.evaluate(probe["input"], output, local_fallback_score=lscore.composite)
         judge_score = report.composite
 
-    # ── 5. Composite final score ──────────────────────────────────────────
+    # ── 6. Composite final score & pass evaluation ────────────────────────
     composite = judge_score if judge_score is not None else lscore.composite
-    min_score = probe.get("min_local_score", 0.50)
+    min_score = probe.get("min_judge_score" if judge_score is not None else "min_local_score", 0.50)
     passed = composite >= min_score
 
-    # ── 6. Severity gate checks ───────────────────────────────────────────
+    # Severity gate checks
     gate.add_if(
         not passed and severity_str == "CRITICAL",
         Severity.CRITICAL,
@@ -138,6 +176,8 @@ def evaluate_probe(
         "PROBE_FAIL_HIGH",
         f"Probe {probe_id} FAILED with composite={composite:.4f} (min={min_score})",
     )
+
+    flags = list(dict.fromkeys(lscore.flags + [f.failure_type.value for f in parsed.failures]))
 
     status = "PASS" if passed else "FAIL"
     logger.info(
@@ -156,8 +196,8 @@ def evaluate_probe(
         judge_score=judge_score,
         composite=composite,
         passed=passed,
-        flags=lscore.flags,
-        pii_detected=pii_result.has_pii,
+        flags=flags,
+        pii_detected=has_pii,
         severity=severity_str,
         latency_ms=round(latency_ms, 2),
         input_text=probe.get("input", "").strip(),

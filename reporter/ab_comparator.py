@@ -9,8 +9,21 @@ Runs two prompt templates against the same probe bank and produces a diff:
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from typing import Callable
+
+# Safe UTF-8 console output for Windows / cross-platform terminals
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from reporter.report_generator import EvalRunReport, ProbeResult
 

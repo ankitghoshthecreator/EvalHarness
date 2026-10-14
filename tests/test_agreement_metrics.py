@@ -32,7 +32,7 @@ class TestCohensKappa:
         kappa = cohens_kappa(r1, r2)
         assert kappa <= 0.0
 
-    def test_substantial_agreement_circle_benchmark(self):
+    def test_substantial_agreement_institutional_benchmark(self):
         # 100 test items with ~90% agreement, reflecting human-judge alignment (κ ≈ 0.81)
         # 75 PASS-PASS, 15 FAIL-FAIL, 5 PASS-FAIL, 5 FAIL-PASS
         r1 = ["PASS"] * 80 + ["FAIL"] * 20

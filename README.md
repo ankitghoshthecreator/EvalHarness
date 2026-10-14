@@ -8,7 +8,7 @@
 
 LLM Eval Harness is a **modular evaluation and guardrails framework** for LLM-powered applications. It provides automated benchmarking, LLM-as-a-judge scoring, adversarial probing, and output validation — the infrastructure layer that sits between model development and production deployment.
 
-Built directly out of learnings from the **CIRCLE** project, where an ad-hoc evaluation setup forced manual probe inspection. This harness packages all of that into a reusable, CI-friendly toolkit.
+Built as an enterprise-grade evaluation toolkit packaging fast rule-based scoring, structured judge rubrics, and CI-friendly quality gates into a reproducible pipeline.
 
 ---
 
@@ -29,7 +29,7 @@ LLM applications deployed in financial institutions (JPMC, Goldman, BNY) are exp
        ↓
 [Evaluation Layer]
   ├── Rule-Based Scorer      (regex, length, punctuation, TTR)
-  ├── LLM-as-Judge           (Groq 70B, structured JSON rubric)
+  ├── LLM-as-Judge           (Groq 120B, structured JSON rubric)
   └── RAGAS Metrics          (faithfulness, relevancy, recall)
        ↓
 [Report Generator]
@@ -51,8 +51,8 @@ LLM applications deployed in financial institutions (JPMC, Goldman, BNY) are exp
 | Layer | Tools |
 |---|---|
 | Language | Python 3.11 |
-| LLM-as-Judge | Groq API (llama-3-70b), structured JSON rubric |
-| Local Evaluator | n-gram TTR, Jaccard, regex (from CIRCLE) |
+| LLM-as-Judge | Groq API (openai/gpt-oss-120b), structured JSON rubric |
+| Local Evaluator | n-gram TTR, Jaccard, regex |
 | Schema Enforcement | Pydantic v2, JSON Schema |
 | Metrics | RAGAS, BLEU, ROUGE-L, BERTScore |
 | Reporting | Markdown + JSON, pytest-compatible output |
@@ -62,14 +62,14 @@ LLM applications deployed in financial institutions (JPMC, Goldman, BNY) are exp
 
 ## Key Components
 
-### 1. Tiered Evaluation Routing (from CIRCLE)
-The local rule-based scorer (0.013ms/probe) fast-passes high-quality outputs (score ≥ 0.70) and escalates edge cases to the Groq 70B judge. This cuts cloud API costs by >90% in automated CI runs where most outputs are routine.
+### 1. Tiered Evaluation Routing
+The local rule-based scorer (0.013ms/probe) fast-passes high-quality outputs (score ≥ 0.70) and escalates edge cases to the Groq 120B judge. This cuts cloud API costs by >90% in automated CI runs where most outputs are routine.
 
 ### 2. Structured Judge Rubric
-The Groq 70B judge receives a **JSON schema prompt** specifying axes: fluency (0–1), factual grounding (0–1), instruction adherence (0–1), and hallucination risk (NONE / LOW / HIGH). It returns a `JudgeReport` Pydantic model — no free-text parsing.
+The Groq 120B judge receives a **JSON schema prompt** specifying axes: fluency (0–1), factual grounding (0–1), instruction adherence (0–1), and hallucination risk (NONE / LOW / HIGH). It returns a `JudgeReport` Pydantic model — no free-text parsing.
 
 ### 3. Severity-Gated Guardrails
-Borrowed directly from CIRCLE's `COMMISSIONING_TRIGGERS`: only CRITICAL and HIGH severity failures block the pipeline. LOW / MEDIUM issues are logged but don't fail the CI check. Priority hard-capped at 5.
+Production commissioning triggers pattern: only CRITICAL and HIGH severity failures block the pipeline. LOW / MEDIUM issues are logged but don't fail the CI check. Priority hard-capped at 5.
 
 ### 4. Prompt Version A/B Comparison
 Run two prompt templates against the same probe bank and get a diff report: which probes flipped PASS→FAIL or FAIL→PASS, and aggregate score delta.
@@ -84,10 +84,10 @@ Automated quantitative risk scorecard (PII exposure rate, hallucination failure 
 Coordinates redundant LLM judge evaluation (e.g. 120B primary + 20B secondary models) across four voting strategies: `AVERAGE`, `STRICT_MINIMUM` (conservative banking policy), `MAJORITY_VOTE`, and `WEIGHTED`. Automatically detects and flags judge score divergence ($\Delta \ge 0.25$) and hallucination risk conflicts.
 
 ### 8. Statistical Agreement Engine (Cohen's κ & Krippendorff's α)
-Mathematical calculation of inter-annotator agreement between automated judges and baseline human labels, validating the CIRCLE benchmark agreement ($\kappa = 0.81$). Supports multi-rater coincidence matrices with missing ratings via Krippendorff's Alpha.
+Mathematical calculation of inter-annotator agreement between automated judges and baseline human labels, validating institutional benchmark agreement ($\kappa = 0.81$). Supports multi-rater coincidence matrices with missing ratings via Krippendorff's Alpha.
 
 ### 9. Token Economics & Cost Analytics Engine
-Empirically quantifies the token consumption and cloud spend reduction achieved by CIRCLE's tiered evaluation routing ($0.013\text{ms}$ local fast-pass vs cloud judge escalation), tracking cumulative dollar savings ($>90\%$ reduction).
+Empirically quantifies the token consumption and cloud spend reduction achieved by tiered evaluation routing ($0.013\text{ms}$ local fast-pass vs cloud judge escalation), tracking cumulative dollar savings ($>90\%$ reduction).
 
 ---
 
@@ -99,21 +99,10 @@ Empirically quantifies the token consumption and cloud spend reduction achieved 
 | Judge agreement with human labels | Cohen's κ | 0.81 (Substantial Agreement) |
 | Multi-rater consensus | Krippendorff's α | 0.84 |
 | PII detection recall | Recall on synthetic PII set | 97.3% |
-| Regression test suite | Pass rate | 100% (155 tests) |
+| Regression test suite | Pass rate | 100% (202 tests) |
 | Tiered routing cost reduction | Cloud spend vs 100% API | > 90% savings |
 | Full harness run (25 probes) | Wall time | < 4s (local fast-pass) |
 | Governance compliance | Fed SR 11-7 / OCC 2011-12 | Automated Audit Pack |
-
----
-
-## CIRCLE Integration
-
-This harness is the extracted, generalized version of CIRCLE's internal evaluation stack:
-
-- **`LightweightStudentEvaluator`** from `eval/distilled_eval.py` → packaged as the local scorer
-- **`GroqCriticAgent`** from `eval/critique.py` → packaged as the judge backend
-- **`FailureModeParser`** with `<think>` tag sanitization → packaged as the parse layer
-- **`SyntheticDataValidator`** 7-layer gate → re-used as the output guardrail
 
 ---
 
@@ -148,10 +137,13 @@ llm-eval-harness/
 │   ├── ab_comparator.py          # prompt version diff & flip detection
 │   ├── mrm_generator.py          # Federal Reserve SR 11-7 audit pack generator
 │   └── cost_tracker.py           # Token economics & tiered routing savings engine
-├── tests/                        # 155 automated unit & integration tests
+├── tests/                        # 202 automated unit & integration tests
+├── app.py                        # Streamlit interactive showcase dashboard
 ├── runner.py                     # Main orchestrator CLI (tiered routing)
 ├── ab_compare.py                 # Standalone A/B comparison CLI
 ├── mrm_report.py                 # Standalone SR 11-7 MRM audit pack CLI
+├── ci_gate.py                    # Enterprise CI/CD quality gate & PR merge blocker
+├── scripts/pre_commit_eval.py    # Developer pre-commit quality gate
 ├── .github/workflows/eval_ci.yml
 └── docker/Dockerfile
 ```
@@ -175,6 +167,9 @@ python mrm_report.py eval_history/run_a.json --institution "Goldman Sachs"
 
 # 5. Token economics & cost savings analysis
 python -m reporter.cost_tracker eval_history/run_a.json
+
+# 6. Launch interactive Streamlit showcase dashboard
+streamlit run app.py
 ```
 
 ---
@@ -184,5 +179,6 @@ python -m reporter.cost_tracker eval_history/run_a.json
 - [x] **Phase 1**: Tiered evaluation routing, Groq 120B judge, Pydantic guardrails, and RAGAS metrics.
 - [x] **Phase 2**: Federal Reserve SR 11-7 MRM audit pack generator & 25-probe institutional red-teaming bank.
 - [x] **Phase 3**: Multi-judge ensemble consensus, Cohen's Kappa ($\kappa$) agreement, and token cost economics.
+- [x] **Phase 4**: Automated CI/CD regression quality gate, PR merge blocker, developer pre-commit hook, and Streamlit showcase UI.
 
 

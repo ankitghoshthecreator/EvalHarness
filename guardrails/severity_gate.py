@@ -1,7 +1,7 @@
 """
 severity_gate.py — Severity-gated guardrail enforcement.
 
-Borrowed directly from CIRCLE's COMMISSIONING_TRIGGERS pattern:
+Features:
   - CRITICAL / HIGH  → block pipeline (raise SeverityBlock)
   - MEDIUM / LOW     → log warning, continue
   - Priority hard-capped at 5 issues per run
@@ -18,7 +18,7 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-MAX_ISSUES = 5  # Hard cap per CIRCLE's COMMISSIONING_TRIGGERS
+MAX_ISSUES = 5  # Hard cap for blocking pipeline issues per run
 
 
 class Severity(str, Enum):

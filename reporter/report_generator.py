@@ -33,6 +33,8 @@ class ProbeResult:
     pii_detected: bool = False
     severity: str = "MEDIUM"
     latency_ms: float = 0.0
+    input_text: str = ""
+    output_text: str = ""
 
 
 @dataclass

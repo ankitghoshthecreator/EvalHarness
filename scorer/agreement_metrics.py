@@ -7,7 +7,7 @@ Implements:
   - Continuous-to-categorical thresholding & confusion matrix analysis
   - Landis & Koch (1977) qualitative benchmark interpretation
 
-Directly underpins the CIRCLE human-judge alignment benchmark (κ = 0.81).
+Directly underpins the institutional human-judge alignment benchmark (κ = 0.81).
 """
 
 from __future__ import annotations

@@ -2,7 +2,7 @@
 cost_tracker.py — Token Economics & Tiered Routing Savings Engine.
 
 Quantifies token consumption, cloud API costs, and empirical cost reduction
-achieved by CIRCLE's tiered evaluation routing architecture (0.013ms local fast-pass
+achieved by the tiered evaluation routing architecture (0.013ms local fast-pass
 vs cloud LLM-as-a-judge escalation).
 """
 

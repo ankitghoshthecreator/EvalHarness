@@ -1,4 +1,4 @@
-name: LLM Eval Harness CI
+name: LLM Eval Harness CI & Quality Gate
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  eval-ci:
+  quality-gate:
+    name: Test Suite & PR Quality Gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,46 +17,37 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Create and activate venv
-        run: |
-          python -m venv venv
-          source venv/bin/activate
+          cache: "pip"
 
       - name: Install dependencies
         run: |
-          source venv/bin/activate
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run test suite
+      - name: Run Pytest Suite & Coverage Check
         run: |
-          source venv/bin/activate
-          pytest tests/ -v --tb=short --cov=scorer --cov=guardrails --cov=reporter \
-            --cov-report=term-missing --cov-fail-under=80
+          pytest tests/ -v --tb=short \
+            --cov=scorer --cov=guardrails --cov=reporter \
+            --cov-report=term-missing --cov-fail-under=85
 
-      - name: Run eval harness (mock LLM, no API key)
+      - name: Run Eval Harness with SR 11-7 MRM Generator
         run: |
-          source venv/bin/activate
           python runner.py --probe-bank probes/probe_bank.yaml --model mock \
+            --mrm --institution "Enterprise Model Risk Management" \
             --output-dir eval_history
 
-      - name: Check for regressions (if baseline exists)
+      - name: Enforce CI/CD Regression Quality Gate
         run: |
-          source venv/bin/activate
-          BASELINE=$(ls eval_history/*.json 2>/dev/null | head -1)
-          if [ -n "$BASELINE" ]; then
-            echo "Running regression check against $BASELINE"
-            python runner.py --probe-bank probes/probe_bank.yaml --model mock \
-              --baseline "$BASELINE" --output-dir eval_history
-          else
-            echo "No baseline found — skipping regression check"
-          fi
-        continue-on-error: false
+          CANDIDATE=$(ls -t eval_history/20*.json | head -1)
+          echo "Evaluating Candidate: $CANDIDATE against Baseline: eval_history/baseline.json"
+          python ci_gate.py "$CANDIDATE" \
+            --baseline eval_history/baseline.json \
+            --min-pass-rate 0.85 \
+            --max-regressed 2
 
-      - name: Upload eval reports
+      - name: Upload Audit Reports & Artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: eval-reports
+          name: mrm-eval-audit-pack
           path: eval_history/

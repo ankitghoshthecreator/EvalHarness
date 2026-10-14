@@ -1,5 +1,5 @@
 """
-judge_agent.py — Groq 70B LLM-as-Judge with structured Pydantic output.
+judge_agent.py — Groq 120B/70B LLM-as-Judge with structured Pydantic output.
 
 Rubric axes:
   - fluency          [0.0, 1.0]
@@ -7,7 +7,6 @@ Rubric axes:
   - instruction_adherence [0.0, 1.0]
   - hallucination_risk  NONE | LOW | HIGH
 
-Extracted and generalized from CIRCLE's GroqCriticAgent + FailureModeParser.
 Includes <think> CoT-tag sanitization and fallback to local scorer on API failure.
 """
 

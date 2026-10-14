@@ -6,8 +6,6 @@ Metrics:
   - N-gram windowing: degenerate repetition detection
   - Jaccard overlap: circular output detection (input ≈ output)
   - Regex syntax markers: punctuation, quote balance, formatting
-
-Extracted and generalized from CIRCLE's LightweightStudentEvaluator.
 """
 
 from __future__ import annotations
